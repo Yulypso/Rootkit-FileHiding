@@ -1,0 +1,5 @@
+TARGETNAME=shakadriver
+TARGETTYPE=DRIVER
+
+SOURCES=hookNtQueryDirectoryFile.c
+
